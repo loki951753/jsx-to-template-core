@@ -1,0 +1,20 @@
+{
+  "name": "babel-plugin-transform-jsx-to-php",
+  "version": "1.0.0",
+  "description": "",
+  "main": "./src/index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {},
+  "dependencies": {
+    "@babel/core": "^7.0.0-beta.52",
+    "@babel/parser": "^7.0.0-beta.52"
+  }
+}
