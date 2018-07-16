@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:59:54 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-12 14:11:57
+ * @Last Modified time: 2018-07-16 17:07:20
  */
 
 
@@ -22,9 +22,6 @@ function initBlock(){
 }
 
 function createToken(type, ...arg){
-    if (arg.length === 0) {
-        throw new Error('Should pass one arg at least when create token');
-    }
     let token;
     switch (type) {
         case TYPE.PLAIN:
@@ -33,13 +30,41 @@ function createToken(type, ...arg){
                 val: arg[0]
             }
             break;
-        case TYPE.ECHO:
+        case TYPE.IDENTIFIER:
             token = {
-                type: TYPE.ECHO,
+                type: TYPE.IDENTIFIER,
                 val: arg[0]
             }
             break;
-    
+        case TYPE.MEMBER:
+            token = {
+                type: TYPE.MEMBER,
+                val: arg
+            }
+            break;
+        case TYPE.ECHO:
+            token = {
+                type: TYPE.ECHO,
+                val: arg
+            }
+            break;
+        case TYPE.CONDITION:
+            token = {
+                type: TYPE.CONDITION,
+                test: null,
+                consequent: null,
+                alternate: null
+            } 
+            break;
+        case TYPE.FOREACH:
+            token = {
+                type: TYPE.FOREACH,
+                dataset: null,
+                index: null,
+                item: null,
+                statement: []
+            }
+            break;
         default:
             break;
     }
@@ -52,14 +77,12 @@ function expect(node){
         to: {
             be: (types) => {
                 if(Array.isArray(types)){
-                    let _type;
                     const vaild = types.some((type)=>{
-                        _type = type;
                         return t[`is${type}`](node);
                     })
     
                     if(!vaild){
-                        throw new Error(`Expect ${types.join('|')} but got ${_type}`);
+                        throw new Error(`Expect ${types.join('|')} but got ${node.type}`);
                     }
                 } else if(typeof types === 'string') {
                     const type = types;
@@ -67,7 +90,31 @@ function expect(node){
                         throw new Error(`Expect ${type} but got ${node.type}`);
                     }
                 }
-            }   
+            },
+            equal: (vals) => {
+                let val = node; // rename
+                if(Array.isArray(vals)){
+                    const valid = vals.indexOf(val) > -1;
+
+                    if(!valid){
+                        throw new Error(`Expect ${ValidityState.join('|')} but got ${val}`);
+                    }
+                } else if(typeof vals === 'string' || typeof vals === 'boolean'){
+                    if(vals !== val){
+                        throw new Error(`Expect ${vals} but got ${val}`);
+                    }
+                }
+            }
+        },
+        should: {
+            notbe: (type) => {
+                if(typeof types === 'string'){
+                    const type = types;
+                    if(t[`is${type}`](node)){
+                        throw new Error(`${type} should not be`);
+                    }
+                }
+            }
         }
     }
 }
@@ -100,6 +147,15 @@ function mergeTokens(tokens){
             buf.push(cur.val);
         } else {
             clearBuf();
+
+            if(typeof cur === 'object'){
+                Object.keys(cur).forEach((prop)=>{
+                    if(Array.isArray(cur[prop]) && (cur[prop].length !== 0)){
+                        cur[prop] = mergeTokens(cur[prop]);
+                    }
+                })
+            }
+
             newTokens.push(cur);
         }
     }
@@ -119,7 +175,7 @@ class Buf {
             // @TODO: extend token node to a basenode to check instance
             this.buf.push(token);
         } else {
-            throw new Error(`Invalid token`);
+            throw new Error(`Invalid token: ${token}`);
         }
 
         return this;
@@ -137,6 +193,7 @@ class Visitor {
     }
     visit(){
         let tokens = this._visit(this.path);
+        tokens = JSON.parse(JSON.stringify(tokens)); // clone tokens 
         tokens = mergeTokens(tokens);
         this.ast.program.body = tokens;
         return this.ast;
@@ -144,61 +201,21 @@ class Visitor {
     _visit(visitedPath){
         const buf = new Buf();
         visitedPath.traverse({
-            JSXElement: (path)=>{
-                /*
-                    {
-                        type: "JSXElement";
-                        openingElement: JSXOpeningElement;
-                        closingElement: JSXClosingElement | null;
-                        children: Array<JSXText | JSXExpressionContainer | JSXSpreadChild | JSXElement | JSXFragment>;
-                        selfClosing: any;
-                    }
-                */
-
-                const node = path.node;
-
-                // opening tag
-                const elementName = node.openingElement.name.name;
-                if(path.scope.hasBinding(elementName)){
-                    log(`Found custom component being used -> ${elementName}`);
-
-                } else {
-                    // normal html element
-                    buf.push(createToken(TYPE.PLAIN, `<${elementName}`));
-                }
-
-                // attribute
-                const attributes = node.openingElement.attributes;
-                if(attributes.length !== 0){
-                    attributes.forEach((attribute, index)=>{
-                        buf.push(this.visitJSXAttribute(path.get('openingElement.attributes')[index]));
-                    })
-                }
-
-                // self close are not allow
-                buf.push(createToken(TYPE.PLAIN, `>`));
-
-                // children
-                if(node.children.length > 0){
-                    buf.push(this.visitJSXElementChildren(path.get('children')));
-                }
-
-                // closing tag
-                if(node.openingElement.selfClosing || (!node.closingElement)
-                ){
-                    // always append a close tag
-                    // @TODO: ignore the tags allow selfClosing
-                    buf.push(createToken(TYPE.PLAIN, `</${node.openingElement.name.name}>`));                    
-                } else if(node.closingElement){
-                    buf.push(createToken(TYPE.PLAIN, `</${node.closingElement.name.name}>`));
-                }
-                
+            JSXElement: (path)=>{     
+                buf.push(this.visitJSXElement(path));
                 path.stop();
                 return;
             }
         })
 
         return buf.get();
+    }
+    getVisitMethod(name){
+        const visitMethod = this[`visit${name}`];
+        if(!visitMethod){
+            throw new ReferenceError(`Unsupport node of type ${name}`);
+        }
+        return visitMethod.bind(this);
     }
     visitJSXAttribute(path){
         /*
@@ -231,7 +248,58 @@ class Visitor {
         if(node.value){
             expect(node.value).to.be(['StringLiteral', 'JSXExpressionContainer']);
             buf.push(createToken(TYPE.PLAIN, '='));
-            buf.push(this[`visit${node.value.type}`](path.get('value')));
+            buf.push(this.getVisitMethod(node.value.type)(path.get('value')));
+        }
+
+        return buf.get();
+    }
+    visitJSXElement(path){
+        /*
+            {
+                type: "JSXElement";
+                openingElement: JSXOpeningElement;
+                closingElement: JSXClosingElement | null;
+                children: Array<JSXText | JSXExpressionContainer | JSXSpreadChild | JSXElement | JSXFragment>;
+                selfClosing: any;
+            }
+        */
+
+        let buf = new Buf();
+        const node = path.node;
+
+        // opening tag
+        const elementName = node.openingElement.name.name;
+        if(path.scope.hasBinding(elementName)){
+            log(`Found custom component being used -> ${elementName}`);
+        } else {
+            // normal html element
+            buf.push(createToken(TYPE.PLAIN, `<${elementName}`));
+        }
+
+        // attribute
+        const attributes = node.openingElement.attributes;
+        if(attributes.length !== 0){
+            attributes.forEach((attribute, index)=>{
+                buf.push(this.visitJSXAttribute(path.get('openingElement.attributes')[index]));
+            })
+        }
+
+        // self close are not allow
+        buf.push(createToken(TYPE.PLAIN, `>`));
+
+        // children
+        if(node.children.length > 0){
+            buf.push(this.visitJSXElementChildren(path.get('children')));
+        }
+
+        // closing tag
+        if(node.openingElement.selfClosing || (!node.closingElement)
+        ){
+            // always append a close tag
+            // @TODO: ignore the tags allow selfClosing
+            buf.push(createToken(TYPE.PLAIN, `</${node.openingElement.name.name}>`));                    
+        } else if(node.closingElement){
+            buf.push(createToken(TYPE.PLAIN, `</${node.closingElement.name.name}>`));
         }
 
         return buf.get();
@@ -244,7 +312,7 @@ class Visitor {
         let expression = path.node.expression;
         expect(expression).to.be(['ArrayExpression', 'BinaryExpression', 'CallExpression', 'ConditionalExpression', 'Identifier', 'StringLiteral', 'NumericLiteral', 'NullLiteral', 'BooleanLiteral', 'LogicalExpression', 'MemberExpression', 'ThisExpression', 'UnaryExpression', 'ArrowFunctionExpression', 'TemplateLiteral', 'JSXElement']);
 
-        return buf.push(this[`visit${expression.type}`](path.get('expression'))).get();
+        return buf.push(this.getVisitMethod(expression.type)(path.get('expression'))).get();
     }   
     visitJSXElementChildren(pathArray){
         // Array<JSXText | JSXExpressionContainer | JSXSpreadChild | JSXElement | JSXFragment>
@@ -254,10 +322,98 @@ class Visitor {
             let node = path.node;
             // ignore JSXSpreadChild | JSXFragment
             expect(node).to.be(['JSXText', 'JSXExpressionContainer', 'JSXElement']);
-            buf.push(this[`visit${node.type}`](path));
+
+            buf.push(this.getVisitMethod(node.type)(path));
         })
 
         return buf.get();
+    }
+    visitJSXText(path){
+        /*
+            {
+                type: "JSXText";
+                value: string;
+            }
+        */
+        const raw = getPossibleRaw(path.node);
+        if(raw){
+            return createToken(TYPE.PLAIN, raw);
+        }
+        return createToken(TYPE.PLAIN, path.node.value);
+    }
+    visitCallExpression(path){
+        /*
+            {
+                type: "CallExpression";
+                callee: Expression;
+                arguments: Array<Expression | SpreadElement | JSXNamespacedName>;
+                optional: true | false | null;
+                typeArguments: TypeParameterInstantiation | null;
+                typeParameters: TSTypeParameterInstantiation | null;
+            }
+        */
+
+        let node = path.node;
+        
+        // only support map function now, like
+        /*
+            data.map((i)=><li>{i}</li>)
+        */
+        expect(node.callee).to.be('MemberExpression'); 
+        expect(node.arguments.length).to.equal(1);
+        expect(node.arguments[0]).to.be('ArrowFunctionExpression');
+        expect(node.arguments[0].body).to.be('JSXElement'); // 仅支持立刻放回JSX元素的语句，不支持额外逻辑，防止引入js runtime逻辑
+
+        expect(node.callee.property.name).to.equal('map'); // only support map now. extend here to support more function or native function
+
+        let token = createToken(TYPE.FOREACH);
+
+        // 获取循环的形参
+        // map(item, index)
+        const params = node.arguments[0].params.map((paramNode)=>paramNode.name);
+        token.item = params[0];
+        token.index = (params.length > 1) && params[1];
+
+        // transform dataset
+        expect(node.callee.object).to.be(['Identifier', 'MemberExpression']);
+        let datasetTokens = this.getVisitMethod(node.callee.object.type)(path.get('callee.object'));
+        token.dataset = datasetTokens;
+
+        // statement
+        let statementTokens = this.getVisitMethod(node.arguments[0].body.type)(path.get('arguments.0.body'));
+        token.statement = statementTokens;
+
+        return token;
+    }
+    visitConditionalExpression(path){
+        /*
+            {
+                type: "ConditionalExpression";
+                test: Expression;
+                consequent: Expression;
+                alternate: Expression;
+            }
+        */
+        let node = path.node;
+        let token = createToken(TYPE.CONDITION);
+
+        // test
+        expect(node.test).to.be(['Identifier', 'LogicalExpression', 'MemberExpression', 'UnaryExpression']);
+        let testTokens = this.getVisitMethod(node.test.type)(path.get('test'));
+        if(!testTokens || testTokens.length === 0){
+            return;
+        }
+        token.test = testTokens;
+
+        // @TODO: expect branch's type
+        let consequentTokens = this.getVisitMethod(node.consequent.type)(path.get('consequent'));
+        let alternateTokens = this.getVisitMethod(node.alternate.type)(path.get('alternate'));
+
+        // @TODO: handle null, ''
+        token.consequent = consequentTokens;
+        token.alternate = alternateTokens;
+
+        return token;
     }
     visitIdentifier(path){
         /*
@@ -270,14 +426,89 @@ class Visitor {
             }
         */
 
-        let buf = new Buf();
         let node = path.node;
-        // Identifier单独出现在JSXExpressionContainer时，其目的是为了输出变量
-        if(t.isJSXExpressionContainer(path.parent)){
-            buf.push(createToken(TYPE.ECHO, node.name));
+        let token;
+        if(t.isJSXExpressionContainer(path.parent) && t.isIdentifier(path.parent.expression)){
+            // Identifier单独出现在JSXExpressionContainer时，其目的是为了输出变量
+            token = createToken(TYPE.ECHO, createToken(TYPE.IDENTIFIER, node.name));
+        }else {
+            token = createToken(TYPE.IDENTIFIER, node.name);
         }
 
-        return buf.get();
+        return token;
+    }
+    visitLogicalExpression(path){
+        /*
+            {
+                type: "LogicalExpression";
+                operator: "||" | "&&" | "??";
+                left: Expression;
+                right: Expression;
+            }
+        */
+        
+        let node = path.node;
+        let token = createToken(TYPE.CONDITION);
+
+        // test
+        expect(node.operator).to.equal(['||', '&&']);
+
+        let leftTokens = this.getVisitMethod(node.left.type)(path.get('left'));
+        let rightTokens = this.getVisitMethod(node.right.type)(path.get('right'));
+        token.test = leftTokens
+
+        if(node.operator === '||'){
+            token.consequent = leftTokens;
+            token.alternate = rightTokens;
+        } else {
+            token.consequent = rightTokens;
+            token.alternate = leftTokens;
+        }
+
+        return token;
+    }
+    visitMemberExpression(path){
+        /*
+            {
+                type: "MemberExpression";
+                object: Expression;
+                property: any;
+                computed: boolean;
+                optional: true | false | null;
+            }
+        */
+
+        let node = path.node;
+        let result;
+
+        let memberElements = [];
+        let curPath = path;
+        let curNode;
+        while(t.isMemberExpression(curNode = curPath.node)){
+            // computed property may bring the problem of js runtime caculate
+            expect(node.computed).to.equal(false);
+            // optional property are not supported
+            expect(node.optional).to.equal(undefined);
+
+            expect(node.property).to.be('Identifier');
+
+            memberElements.unshift(curNode.property.name);
+            curPath = curPath.get('object');
+        }
+
+        // @TODO: 处理ThisExpression
+
+        expect(curNode).to.be('Identifier');
+        memberElements.unshift(curNode.name);
+
+        // MemberExpression单独出现在JSXExpressionContainer中是为了打印输出
+        if(t.isJSXExpressionContainer(path.parent) && t.isMemberExpression(path.parent.expression)){
+            result = createToken(TYPE.ECHO, createToken(TYPE.MEMBER, ...memberElements));
+        } else {
+            result = createToken(TYPE.MEMBER, ...memberElements);
+        }
+
+        return result;
     }
     visitStringLiteral(path){
         /*
@@ -292,6 +523,50 @@ class Visitor {
             return createToken(TYPE.PLAIN, raw); 
         }
         return createToken(TYPE.PLAIN, path.node.value);
+    }
+    visitTemplateLiteral(path){
+        /*
+            TemplateLiteral {
+                type: "TemplateLiteral";
+                quasis: Array<TemplateElement>;
+                expressions: Array<Expression>;
+            }
+
+            TemplateElement {
+                type: "TemplateElement";
+                value: any;
+                tail: boolean;
+            }
+        */
+
+        let node = path.node;
+        let quasis = node.quasis;
+        let expressions = node.expressions;
+        let buf = new Buf();
+
+        buf.push(createToken(TYPE.PLAIN, '"'));
+
+        for(let i = 0; i<quasis.length; i++){
+            let val = quasis[i].value.raw;
+            if(val){
+                val.replace(/"/g, '\"');
+                buf.push(createToken(TYPE.PLAIN, val));
+            }
+
+            if(i + 1 < quasis.length){
+                let expression = expressions[i];
+                
+                let _token = this.getVisitMethod(expressions[i].type)(path.get(`expressions.${i}`));
+                if(t.isIdentifier(expression) || t.isMemberExpression(expression)){
+                    buf.push(createToken(TYPE.ECHO, _token));
+                } else {
+                    buf.push(..._token);
+                }
+            }
+        }
+
+        buf.push(createToken(TYPE.PLAIN, '"'));
+        return buf.get();
     }
 }
 
