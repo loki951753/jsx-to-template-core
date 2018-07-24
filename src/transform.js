@@ -2,15 +2,17 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:59:54 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-16 17:07:20
+ * @Last Modified time: 2018-07-24 21:09:21
  */
 
 
 const t = require('@babel/types');
 const traverse = require('@babel/traverse').default;
 
-const TYPE = require('./type');
+const {TYPE, BASIC_TYPE} = require('./type');
 const { log } = require('./utils');
+
+const supportedExpressionType = ['ArrayExpression', 'BinaryExpression', 'CallExpression', 'ConditionalExpression', 'Identifier', 'StringLiteral', 'NumericLiteral', 'NullLiteral', 'BooleanLiteral', 'LogicalExpression', 'MemberExpression', 'ThisExpression', 'UnaryExpression', 'ArrowFunctionExpression', 'TemplateLiteral', 'JSXElement'];
 
 function initBlock(){
     return {
@@ -42,18 +44,24 @@ function createToken(type, ...arg){
                 val: arg
             }
             break;
-        case TYPE.ECHO:
+        case TYPE.LITERAL:
             token = {
-                type: TYPE.ECHO,
-                val: arg
+                type: TYPE.LITERAL,
+                val: arg[0]
+            }
+            break;
+        case TYPE.INTERPOLATION:
+            token = {
+                type: TYPE.INTERPOLATION,
+                val: arg[0]
             }
             break;
         case TYPE.CONDITION:
             token = {
                 type: TYPE.CONDITION,
                 test: null,
-                consequent: null,
-                alternate: null
+                consequent: [],
+                alternate: []
             } 
             break;
         case TYPE.FOREACH:
@@ -248,7 +256,15 @@ class Visitor {
         if(node.value){
             expect(node.value).to.be(['StringLiteral', 'JSXExpressionContainer']);
             buf.push(createToken(TYPE.PLAIN, '='));
-            buf.push(this.getVisitMethod(node.value.type)(path.get('value')));
+
+            buf.push(createToken(TYPE.PLAIN, '"'));
+            if(t.isJSXExpressionContainer(node.value)){
+                buf.push(this.getVisitMethod(node.value.type)(path.get('value')));
+            } else {
+                // StringLiteral
+                buf.push(createToken(TYPE.PLAIN, node.value.value));
+            }
+            buf.push(createToken(TYPE.PLAIN, '"'));
         }
 
         return buf.get();
@@ -304,15 +320,33 @@ class Visitor {
 
         return buf.get();
     }
+    visitJSXEmptyExpression(path){
+        return;
+    }
     visitJSXExpressionContainer(path){
         // Expression:
         // ArrayExpression | BinaryExpression | CallExpression | ConditionalExpression | Identifier | StringLiteral | NumericLiteral | NullLiteral | BooleanLiteral | LogicalExpression | MemberExpression | ThisExpression | UnaryExpression | ArrowFunctionExpression | TemplateLiteral | JSXElement
+        // 特殊： JSXEmptyExpression
         // ignore: AssignmentExpression | FunctionExpression | RegExpLiteral | NewExpression | ObjectExpression | SequenceExpression | UpdateExpression | ClassExpression | MetaProperty | Super | TaggedTemplateExpression | YieldExpression | TypeCastExpression | JSXFragment | ParenthesizedExpression | AwaitExpression | BindExpression | OptionalMemberExpression | OptionalCallExpression | Import | DoExpression | BigIntLiteral | TSAsExpression | TSTypeAssertion | TSNonNullExpression
         let buf = new Buf();
         let expression = path.node.expression;
-        expect(expression).to.be(['ArrayExpression', 'BinaryExpression', 'CallExpression', 'ConditionalExpression', 'Identifier', 'StringLiteral', 'NumericLiteral', 'NullLiteral', 'BooleanLiteral', 'LogicalExpression', 'MemberExpression', 'ThisExpression', 'UnaryExpression', 'ArrowFunctionExpression', 'TemplateLiteral', 'JSXElement']);
+        expect(expression).to.be([...supportedExpressionType, 'JSXEmptyExpression']);
 
-        return buf.push(this.getVisitMethod(expression.type)(path.get('expression'))).get();
+        let tokens = this.getVisitMethod(expression.type)(path.get('expression'));
+
+        if(tokens){
+            // Identifier, MemberExpression单独出现在JSXExpressionContainer中是为了打印输出
+            if(['Identifier', 'MemberExpression'].indexOf(expression.type) !== -1){
+                tokens = createToken(TYPE.INTERPOLATION, tokens);
+                buf.push(tokens);
+            }else if(['TemplateLiteral', 'StringLiteral'].indexOf(expression.type) !== -1){
+                buf.push(tokens);
+            }else{
+                buf.push(tokens);
+            }
+    
+            return buf.get();
+        }
     }   
     visitJSXElementChildren(pathArray){
         // Array<JSXText | JSXExpressionContainer | JSXSpreadChild | JSXElement | JSXFragment>
@@ -323,7 +357,8 @@ class Visitor {
             // ignore JSXSpreadChild | JSXFragment
             expect(node).to.be(['JSXText', 'JSXExpressionContainer', 'JSXElement']);
 
-            buf.push(this.getVisitMethod(node.type)(path));
+            let result = this.getVisitMethod(node.type)(path);
+            result && buf.push(result);
         })
 
         return buf.get();
@@ -410,8 +445,10 @@ class Visitor {
         let alternateTokens = this.getVisitMethod(node.alternate.type)(path.get('alternate'));
 
         // @TODO: handle null, ''
-        token.consequent = consequentTokens;
-        token.alternate = alternateTokens;
+        Array.isArray(consequentTokens) ? token.consequent.push(...consequentTokens)
+                                        : token.consequent.push(consequentTokens)
+        Array.isArray(alternateTokens) ? token.alternate.push(...alternateTokens)
+                                        : token.alternate.push(alternateTokens);
 
         return token;
     }
@@ -427,13 +464,7 @@ class Visitor {
         */
 
         let node = path.node;
-        let token;
-        if(t.isJSXExpressionContainer(path.parent) && t.isIdentifier(path.parent.expression)){
-            // Identifier单独出现在JSXExpressionContainer时，其目的是为了输出变量
-            token = createToken(TYPE.ECHO, createToken(TYPE.IDENTIFIER, node.name));
-        }else {
-            token = createToken(TYPE.IDENTIFIER, node.name);
-        }
+        let token = createToken(TYPE.IDENTIFIER, node.name);
 
         return token;
     }
@@ -455,14 +486,26 @@ class Visitor {
 
         let leftTokens = this.getVisitMethod(node.left.type)(path.get('left'));
         let rightTokens = this.getVisitMethod(node.right.type)(path.get('right'));
-        token.test = leftTokens
+        token.test = leftTokens;
+
+        // 条件分支单独出现基础类型时，需要打印输出
+        if(BASIC_TYPE.indexOf(leftTokens.type) !== -1){
+            leftTokens = createToken(TYPE.INTERPOLATION, leftTokens);
+        }
+        if(BASIC_TYPE.indexOf(rightTokens.type) !== -1){
+            rightTokens = createToken(TYPE.INTERPOLATION, rightTokens);
+        }
 
         if(node.operator === '||'){
-            token.consequent = leftTokens;
-            token.alternate = rightTokens;
+            Array.isArray(leftTokens) ? token.consequent.push(...leftTokens)
+                                        : token.consequent.push(leftTokens)
+            Array.isArray(rightTokens) ? token.alternate.push(...rightTokens)
+                                        : token.alternate.push(rightTokens);
         } else {
-            token.consequent = rightTokens;
-            token.alternate = leftTokens;
+            Array.isArray(leftTokens) ? token.alternate.push(...leftTokens)
+                                        : token.alternate.push(leftTokens)
+            Array.isArray(rightTokens) ? token.consequent.push(...rightTokens)
+                                        : token.consequent.push(rightTokens);
         }
 
         return token;
@@ -479,7 +522,6 @@ class Visitor {
         */
 
         let node = path.node;
-        let result;
 
         let memberElements = [];
         let curPath = path;
@@ -501,14 +543,7 @@ class Visitor {
         expect(curNode).to.be('Identifier');
         memberElements.unshift(curNode.name);
 
-        // MemberExpression单独出现在JSXExpressionContainer中是为了打印输出
-        if(t.isJSXExpressionContainer(path.parent) && t.isMemberExpression(path.parent.expression)){
-            result = createToken(TYPE.ECHO, createToken(TYPE.MEMBER, ...memberElements));
-        } else {
-            result = createToken(TYPE.MEMBER, ...memberElements);
-        }
-
-        return result;
+        return createToken(TYPE.MEMBER, ...memberElements);
     }
     visitStringLiteral(path){
         /*
@@ -518,11 +553,19 @@ class Visitor {
             }
         */
         //@TODO: add safe ascii
-        const raw = getPossibleRaw(path.node);
-        if(raw){
-            return createToken(TYPE.PLAIN, raw); 
-        }
-        return createToken(TYPE.PLAIN, path.node.value);
+        let token = createToken(TYPE.LITERAL, `"${path.node.value}"`);
+
+        return createToken(TYPE.INTERPOLATION, token);
+    }
+    visitNumericLiteral(path){
+        /*
+            {
+                type: "NumericLiteral";
+                value: number;
+            }       
+        */
+        //@TODO: 比较raw和value进行更精确的数字字面量处理
+        return createToken(TYPE.INTERPOLATION, createToken(TYPE.LITERAL, path.node.value));
     }
     visitTemplateLiteral(path){
         /*
@@ -544,8 +587,6 @@ class Visitor {
         let expressions = node.expressions;
         let buf = new Buf();
 
-        buf.push(createToken(TYPE.PLAIN, '"'));
-
         for(let i = 0; i<quasis.length; i++){
             let val = quasis[i].value.raw;
             if(val){
@@ -558,14 +599,13 @@ class Visitor {
                 
                 let _token = this.getVisitMethod(expressions[i].type)(path.get(`expressions.${i}`));
                 if(t.isIdentifier(expression) || t.isMemberExpression(expression)){
-                    buf.push(createToken(TYPE.ECHO, _token));
+                    buf.push(createToken(TYPE.INTERPOLATION, _token));
                 } else {
-                    buf.push(..._token);
+                    buf.push(_token);
                 }
             }
         }
 
-        buf.push(createToken(TYPE.PLAIN, '"'));
         return buf.get();
     }
 }
