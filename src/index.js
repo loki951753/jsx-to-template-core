@@ -2,9 +2,10 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:41:09 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-20 11:50:07
+ * @Last Modified time: 2018-07-25 20:41:24
  */
 
+const fs = require('fs');
 const path = require('path');
 const Parser = require('./parser');
 const transform = require('./transform');
@@ -24,7 +25,7 @@ var compile = function(str, visitor, options){
 };
 
 var compileFile = function(filepath, visitor, options){
-    var str = fs.readFileSync(filepath);
+    var str = fs.readFileSync(filepath, 'utf8');
 
     return compile(str, visitor, options);
 };

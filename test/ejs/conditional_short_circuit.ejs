@@ -1,4 +1,6 @@
 <div>
+    <div><% if(a){ %><%= b %><% } else { %><%= a %><% } %></div>
     <div><% if(b){ %><div><%= b %></div><% } else { %><%= b %><% } %></div>
     <div><% if(c){ %><%= c %><% } else { %><%= "alternate" %><% } %></div>
+    <div><% if(d){ %><%= d %><% } else { %><div><% if(e){ %><%= f %><% } else { %><%= e %><% } %></div><% } %></div>
 </div>

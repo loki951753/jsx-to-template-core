@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:59:54 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-24 21:09:21
+ * @Last Modified time: 2018-07-26 20:52:44
  */
 
 
@@ -73,8 +73,13 @@ function createToken(type, ...arg){
                 statement: []
             }
             break;
+        /*
+           istanbul ignore next:
+           internal util method.
+           only by developer's fault can reach default branch. Invalid user input won't reach it.
+        */
         default:
-            break;
+            throw new TypeError('Unsupported token type');
     }
 
     return token;
@@ -84,56 +89,52 @@ function expect(node){
     return {
         to: {
             be: (types) => {
+                /*
+                    istanbul ignore else:
+                    internal util method.
+                    only by developer's fault can reach else branch. Invalid user input won't reach it.
+                */
                 if(Array.isArray(types)){
                     const vaild = types.some((type)=>{
                         return t[`is${type}`](node);
                     })
     
                     if(!vaild){
-                        throw new Error(`Expect ${types.join('|')} but got ${node.type}`);
+                        throw new TypeError(`Expect ${types.join('|')} but got ${node.type}`);
                     }
                 } else if(typeof types === 'string') {
                     const type = types;
                     if(!t[`is${type}`](node)){
-                        throw new Error(`Expect ${type} but got ${node.type}`);
+                        throw new TypeError(`Expect ${type} but got ${node.type}`);
                     }
+                } else {
+                    throw new Error(`Expect function got a wrong input`);
                 }
             },
             equal: (vals) => {
                 let val = node; // rename
-                if(Array.isArray(vals)){
-                    const valid = vals.indexOf(val) > -1;
-
-                    if(!valid){
-                        throw new Error(`Expect ${ValidityState.join('|')} but got ${val}`);
-                    }
-                } else if(typeof vals === 'string' || typeof vals === 'boolean'){
-                    if(vals !== val){
-                        throw new Error(`Expect ${vals} but got ${val}`);
-                    }
-                }
-            }
-        },
-        should: {
-            notbe: (type) => {
-                if(typeof types === 'string'){
-                    const type = types;
-                    if(t[`is${type}`](node)){
-                        throw new Error(`${type} should not be`);
+                if(vals){
+                    /*
+                        istanbul ignore else:
+                        internal util method.
+                        only by developer's fault can reach else branch. Invalid user input won't reach it.
+                    */
+                    if(Array.isArray(vals)){
+                        const valid = vals.indexOf(val) > -1;
+    
+                        if(!valid){
+                            throw new Error(`Expect ${vals.join('|')} but got ${val}`);
+                        }
+                    } else if(['string', 'boolean', 'number'].indexOf(typeof vals) > -1){
+                        if(vals !== val){
+                            throw new Error(`Expect ${vals} but got ${val}`);
+                        }
+                    } else {
+                        throw new Error(`Equal function got a wrong input`);
                     }
                 }
             }
         }
-    }
-}
-
-function getPossibleRaw(node){
-    const extra = node.extra;
-    if(extra
-        && extra.raw != null
-        && extra.rawValue != null
-        && node.value === extra.rawValue){
-        return extra.raw;
     }
 }
 
@@ -156,13 +157,11 @@ function mergeTokens(tokens){
         } else {
             clearBuf();
 
-            if(typeof cur === 'object'){
-                Object.keys(cur).forEach((prop)=>{
-                    if(Array.isArray(cur[prop]) && (cur[prop].length !== 0)){
-                        cur[prop] = mergeTokens(cur[prop]);
-                    }
-                })
-            }
+            Object.keys(cur).forEach((prop)=>{
+                if(Array.isArray(cur[prop]) && (cur[prop].length !== 0)){
+                    cur[prop] = mergeTokens(cur[prop]);
+                }
+            })
 
             newTokens.push(cur);
         }
@@ -177,12 +176,17 @@ class Buf {
         this.buf = [];
     }
     push(token){
+        /*
+           istanbul ignore else:
+           internal util method.
+           only by developer's fault can reach default branch. Invalid user input won't reach it.
+        */
         if(Array.isArray(token)){
             this.buf.push(...token);
         } else if ((typeof token === 'object') && (token.type)){
             // @TODO: extend token node to a basenode to check instance
             this.buf.push(token);
-        } else {
+        }  else {
             throw new Error(`Invalid token: ${token}`);
         }
 
@@ -220,8 +224,13 @@ class Visitor {
     }
     getVisitMethod(name){
         const visitMethod = this[`visit${name}`];
+        /*
+           istanbul ignore if:
+           Correct type has been guaranteed by `expect(type)` before in the processing.
+           only developer's fault can throw the error. Invalid user input won't trigger the logical.
+        */
         if(!visitMethod){
-            throw new ReferenceError(`Unsupport node of type ${name}`);
+            throw new ReferenceError(`No matched visit method found: ${name}`);
         }
         return visitMethod.bind(this);
     }
@@ -235,8 +244,6 @@ class Visitor {
         */
         let buf = new Buf();
         const node = path.node;
-
-        expect(node).to.be('JSXAttribute');
         
         // handle attribute's name
         // ignore JSXNamespacedName
@@ -308,14 +315,19 @@ class Visitor {
             buf.push(this.visitJSXElementChildren(path.get('children')));
         }
 
+
         // closing tag
-        if(node.openingElement.selfClosing || (!node.closingElement)
-        ){
+        /*
+            istanbul ignore else:never happen
+        */
+        if(node.openingElement.selfClosing || (!node.closingElement)){
             // always append a close tag
             // @TODO: ignore the tags allow selfClosing
             buf.push(createToken(TYPE.PLAIN, `</${node.openingElement.name.name}>`));                    
         } else if(node.closingElement){
             buf.push(createToken(TYPE.PLAIN, `</${node.closingElement.name.name}>`));
+        } else {
+            throw new Error(`Unexpect ast structure`);
         }
 
         return buf.get();
@@ -370,10 +382,6 @@ class Visitor {
                 value: string;
             }
         */
-        const raw = getPossibleRaw(path.node);
-        if(raw){
-            return createToken(TYPE.PLAIN, raw);
-        }
         return createToken(TYPE.PLAIN, path.node.value);
     }
     visitCallExpression(path){
@@ -435,20 +443,43 @@ class Visitor {
         // test
         expect(node.test).to.be(['Identifier', 'LogicalExpression', 'MemberExpression', 'UnaryExpression']);
         let testTokens = this.getVisitMethod(node.test.type)(path.get('test'));
+
+        /*
+           istanbul ignore if:
+           @TODO: when test statement can't transpile to template, will ignore entire conditional statement
+        */        
         if(!testTokens || testTokens.length === 0){
             return;
         }
         token.test = testTokens;
 
-        // @TODO: expect branch's type
+        // @TODO: support NumericLiteral
+        expect(node.consequent).to.be(['ConditionalExpression', 'Identifier', 'LogicalExpression', 'MemberExpression', 'NullLiteral', 'StringLiteral', 'JSXElement']);
+        expect(node.alternate).to.be(['ConditionalExpression', 'Identifier', 'LogicalExpression', 'MemberExpression', 'NullLiteral', 'StringLiteral', 'JSXElement']);
+
         let consequentTokens = this.getVisitMethod(node.consequent.type)(path.get('consequent'));
         let alternateTokens = this.getVisitMethod(node.alternate.type)(path.get('alternate'));
 
-        // @TODO: handle null, ''
-        Array.isArray(consequentTokens) ? token.consequent.push(...consequentTokens)
-                                        : token.consequent.push(consequentTokens)
-        Array.isArray(alternateTokens) ? token.alternate.push(...alternateTokens)
-                                        : token.alternate.push(alternateTokens);
+        // @TODO: 提取logical与这里的逻辑
+
+        // handle empty branch 
+        // [null, '', "", undefined] will be parsed into TYPE.LITERAL with null
+        if(!((consequentTokens.type === TYPE.LITERAL) && !consequentTokens.val)){
+            if(BASIC_TYPE.indexOf(consequentTokens.type) !== -1){
+                consequentTokens = createToken(TYPE.INTERPOLATION, consequentTokens);
+            }
+            Array.isArray(consequentTokens) ? token.consequent.push(...consequentTokens)
+                                            : token.consequent.push(consequentTokens)
+        }
+
+        if(!((alternateTokens.type === TYPE.LITERAL) && !alternateTokens.val)){
+            if(BASIC_TYPE.indexOf(alternateTokens.type) !== -1){
+                alternateTokens = createToken(TYPE.INTERPOLATION, alternateTokens);
+            }
+    
+            Array.isArray(alternateTokens) ? token.alternate.push(...alternateTokens)
+                                            : token.alternate.push(alternateTokens);
+        }
 
         return token;
     }
@@ -464,8 +495,9 @@ class Visitor {
         */
 
         let node = path.node;
-        let token = createToken(TYPE.IDENTIFIER, node.name);
-
+        let token = node.name === 'undefined' ? createToken(TYPE.LITERAL, null)
+                                            : createToken(TYPE.IDENTIFIER, node.name);
+        
         return token;
     }
     visitLogicalExpression(path){
@@ -489,21 +521,27 @@ class Visitor {
         token.test = leftTokens;
 
         // 条件分支单独出现基础类型时，需要打印输出
-        if(BASIC_TYPE.indexOf(leftTokens.type) !== -1){
-            leftTokens = createToken(TYPE.INTERPOLATION, leftTokens);
-        }
+        // @TODO: 支持复杂条件
+        expect(leftTokens.type).to.equal(BASIC_TYPE);
+        leftTokens = createToken(TYPE.INTERPOLATION, leftTokens);
         if(BASIC_TYPE.indexOf(rightTokens.type) !== -1){
             rightTokens = createToken(TYPE.INTERPOLATION, rightTokens);
         }
 
         if(node.operator === '||'){
+            /* comment for complex conditional test
             Array.isArray(leftTokens) ? token.consequent.push(...leftTokens)
-                                        : token.consequent.push(leftTokens)
+                                        : token.consequent.push(leftTokens);
+            */
+           token.consequent.push(leftTokens);
             Array.isArray(rightTokens) ? token.alternate.push(...rightTokens)
                                         : token.alternate.push(rightTokens);
         } else {
+            /* comment for complex conditional test
             Array.isArray(leftTokens) ? token.alternate.push(...leftTokens)
-                                        : token.alternate.push(leftTokens)
+                                        : token.alternate.push(leftTokens);
+            */
+            token.alternate.push(leftTokens);
             Array.isArray(rightTokens) ? token.consequent.push(...rightTokens)
                                         : token.consequent.push(rightTokens);
         }
@@ -553,9 +591,20 @@ class Visitor {
             }
         */
         //@TODO: add safe ascii
-        let token = createToken(TYPE.LITERAL, `"${path.node.value}"`);
+        if(!path.node.value){
+            return createToken(TYPE.LITERAL, null);
+        } else {
+            return createToken(TYPE.INTERPOLATION, createToken(TYPE.LITERAL, `"${path.node.value}"`));
+        }
+    }
+    visitNullLiteral(path){
+        /*
+            {
+               type: "NullLiteral";
+            }
+        */
 
-        return createToken(TYPE.INTERPOLATION, token);
+        return createToken(TYPE.LITERAL, null);
     }
     visitNumericLiteral(path){
         /*

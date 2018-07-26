@@ -1,0 +1,1 @@
+<div attr>{...children}</div>

@@ -14,12 +14,15 @@ const jsx2ejsVisitor = function(){
         [TYPE.PLAIN]: function(token){
             return token.val;
         },
-        [TYPE.MEMBER]: function(token){
-            return packVar(token);
-        },
-        [TYPE.LITERAL]: function(token){
-            return token.val;
-        },
+        // [TYPE.IDENTIFIER]: function(token){
+        //     return packVar(token);
+        // },
+        // [TYPE.MEMBER]: function(token){
+        //     return packVar(token);
+        // },
+        // [TYPE.LITERAL]: function(token){
+        //     return token.val;
+        // },
         [TYPE.INTERPOLATION]: function(token){
             return `<%= ${packVar(token.val)} %>`;
         },
@@ -29,16 +32,16 @@ const jsx2ejsVisitor = function(){
             let alternate = node.alternate;
     
             buf.push(`<% if(${packVar(node.test)}){ %>`);
-            if(consequent){
+            if(consequent.length !== 0){
                 if(consequent.length === 1 && consequent[0].type === TYPE.PLAIN){
                     buf.push(consequent[0].val);
-                }else{
+                } else {
                     let g = new Generator(consequent, jsx2ejsVisitor);
                     buf.push(g.gen());
                 }
             }
 
-            if(alternate){
+            if(alternate.length !== 0){
                 buf.push('<% } else { %>')
                 if(alternate.length === 1 && alternate[0].type === TYPE.PLAIN){
                     buf.push(alternate[0].val);
@@ -46,10 +49,27 @@ const jsx2ejsVisitor = function(){
                     let g = new Generator(alternate, jsx2ejsVisitor);
                     buf.push(g.gen());
                 }
-                buf.push('<% } %>');
-            }else{
-                buf.push('<% } %>'); // the close tag of if
             }
+            buf.push('<% } %>'); // the close tag of if
+
+            return buf.join('');
+        },
+        [TYPE.FOREACH]: function(node){
+            let buf = [];
+            let dataset = packVar(node.dataset);
+            let item = node.item;
+            let index = node.index || 'index';
+
+            buf.push('<% (function(){ ');
+            buf.push(`var ${item};`);
+            buf.push(`for(var ${index}=0; ${index}<${dataset}.length; ++${index}){`);
+            buf.push(`${item}=${dataset}[${index}];%>`);
+            
+            let g = new Generator(node.statement, jsx2ejsVisitor);
+            let statement = g.gen();
+
+            buf.push(`${statement}`);
+            buf.push(`\n<%}})()%>`);
 
             return buf.join('');
         }

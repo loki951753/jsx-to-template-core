@@ -10,7 +10,7 @@ const ELSE = 'ELSE';
 const FOREACH = 'FOREACH'; // 循环语句
 
 
-module.exports.BASIC_TYPE = [PLAIN, IDENTIFIER, MEMBER, LITERAL];
+module.exports.BASIC_TYPE = [IDENTIFIER, MEMBER, LITERAL];
 
 module.exports.TYPE = {
     PLAIN,

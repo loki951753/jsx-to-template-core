@@ -1,4 +1,5 @@
-const compile = require('../').compile;
+const compile = require('./').compile;
+const ejsVisitor = require('./src/visitors/jsx2ejs');
 
 console.log(compile(`
 <div className="News">
@@ -32,4 +33,4 @@ console.log(compile(`
         ))
     }
     </ul>
-</div>`));
+</div>`, ejsVisitor));

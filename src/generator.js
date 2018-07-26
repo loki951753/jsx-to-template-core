@@ -9,7 +9,7 @@ class Generator {
         } else if(typeof visitor === 'object'){
             this.visitor = visitor;
         } else {
-            throw new Error('Unexcepted visitor type');
+            throw new TypeError('Unexcepted visitor type');
         }
 
         this._buf = [];
@@ -29,7 +29,7 @@ class Generator {
             if(method){
                 this._buf.push(method(node));
             } else {
-                throw new Error(`Unhandle token: ${node.type}`);
+                throw new TypeError(`Unhandle token: ${node.type}`);
             }
         }
 

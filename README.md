@@ -10,3 +10,9 @@ sourcemap暂时不考虑，收益比较低。
 ## feature work:
 0. BinaryExpresison using '+' to concat strings
 1. nested templateLiteral
+2. expect return true for conditional
+
+## example:
+1. react todomvc
+2. express
+3. webpack
