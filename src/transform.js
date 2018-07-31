@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:59:54 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-26 20:52:44
+ * @Last Modified time: 2018-07-31 20:29:19
  */
 
 
@@ -210,15 +210,17 @@ class Visitor {
         this.ast.program.body = tokens;
         return this.ast;
     }
-    _visit(visitedPath){
+    _visit(path){
         const buf = new Buf();
-        visitedPath.traverse({
-            JSXElement: (path)=>{     
-                buf.push(this.visitJSXElement(path));
-                path.stop();
-                return;
-            }
-        })
+        // visitedPath.traverse({
+        //     JSXElement: (path)=>{     
+        //         buf.push(this.visitJSXElement(path));
+        //         path.stop();
+        //         return;
+        //     }
+        // })
+
+        buf.push(this.visitJSXElement(path));
 
         return buf.get();
     }
@@ -293,7 +295,7 @@ class Visitor {
         // opening tag
         const elementName = node.openingElement.name.name;
         if(path.scope.hasBinding(elementName)){
-            log(`Found custom component being used -> ${elementName}`);
+            console.log(`Found custom component being used -> ${elementName}`);
         } else {
             // normal html element
             buf.push(createToken(TYPE.PLAIN, `<${elementName}`));
@@ -663,19 +665,24 @@ class Visitor {
  * transform ast to another ast for generate embed template language
  * @param {Object} ast 
  */
-function transform(ast){
-    let visitor;
-    traverse(ast, {
-        Program: (path)=>{
-            const node = path.node;
-            if(node.body.length > 1){
-                throw new Error('Multiple nodes in program body are not supported');
-            }
-            visitor = new Visitor(path.get('body.0'));
+// function transform(ast){
+//     let visitor;
+//     traverse(ast, {
+//         Program: (path)=>{
+//             const node = path.node;
+//             if(node.body.length > 1){
+//                 throw new Error('Multiple nodes in program body are not supported');
+//             }
+//             visitor = new Visitor(path.get('body.0'));
 
-            path.stop();
-        }
-    })
+//             path.stop();
+//         }
+//     })
+
+//     return visitor.visit();
+// }
+function transform(path){
+    let visitor = new Visitor(path);
 
     return visitor.visit();
 }

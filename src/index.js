@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:41:09 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-31 17:52:37
+ * @Last Modified time: 2018-07-31 20:24:35
  */
 
 const fs = require('fs');
@@ -22,7 +22,7 @@ var compile = function(str, visitor, options){
     // 同一文件中可能有多个标记
     let result = [];
     comsInfo.forEach(({ast, path, tags})=>{
-        let templateAst = transform(ast);
+        let templateAst = transform(path);
         let generator = new Generator(templateAst.program.body, visitor);
     
         let code = generator.gen();
