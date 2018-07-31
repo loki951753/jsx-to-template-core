@@ -21,6 +21,14 @@ function fixture(name){
 describe('compile jsx to template ast', function(){
 });
 
+describe('process', function(){
+    const jsx2ejs = jsx2tpl.compileBy(ejsVisitor);
+    it('todomvc', function(){
+        const str = fixture('fixtures/todomvc.jsx');
+        assert.equal(jsx2ejs(str), fixture('ejs/todomvc.ejs'));
+    })
+})
+
 describe('ejs', function(){
     const jsx2ejs = jsx2tpl.compileBy(ejsVisitor);
 

@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:41:09 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-25 20:41:24
+ * @Last Modified time: 2018-07-31 17:52:37
  */
 
 const fs = require('fs');
@@ -14,14 +14,25 @@ const Generator = require('./generator');
 
 var compile = function(str, visitor, options){
     let parser = new Parser(str, options);
-    let ast = parser.parse().ast;
+    // let ast = parser.parse().ast;
+    let comsInfo = parser.validate();
 
-    let templateAst = transform(ast);
-    let generator = new Generator(templateAst.program.body, visitor);
+    if(!comsInfo || comsInfo.length === 0) return;
 
-    let code = generator.gen();
+    // 同一文件中可能有多个标记
+    let result = [];
+    comsInfo.forEach(({ast, path, tags})=>{
+        let templateAst = transform(ast);
+        let generator = new Generator(templateAst.program.body, visitor);
+    
+        let code = generator.gen();
+        result.push({
+            comInfo: tags,
+            code
+        });
+    });
 
-    return code;
+    return result;
 };
 
 var compileFile = function(filepath, visitor, options){
