@@ -63,15 +63,37 @@ const jsx2ejsVisitor = function(){
             buf.push('<% (function(){ ');
             buf.push(`var ${item};`);
             buf.push(`for(var ${index}=0; ${index}<${dataset}.length; ++${index}){`);
-            buf.push(`${item}=${dataset}[${index}];%>`);
+            buf.push(`${item}=${dataset}[${index}]; %>`);
             
             let g = new Generator(node.statement, jsx2ejsVisitor);
             let statement = g.gen();
 
-            buf.push(`${statement}`);
-            buf.push(`\n<%}})()%>`);
+            buf.push(statement);
+            buf.push(`\n<% }})() %>`);
 
             return buf.join('');
+        },
+        [TYPE.CUSTOM_COMPONENT]: function(node){
+            // let buf = [];
+            // let customComHasDeclared = coms.some(({ast, code, tags})=>{
+            //     if(tags.name === node.name){
+            //         if(code){
+            //             buf.push(code);
+            //         }else{
+            //             let g = new Generator(ast, jsx2ejsVisitor);
+            //             let statement = g.gen();
+            //             buf.push(statement);
+            //         }
+            //         return true;
+            //     }
+            // });
+            // if(!customComHasDeclared){
+            //     throw new Error('Using a undeclared custom component');
+            // }
+
+            // return buf.join('');
+
+            return `###${node.name}###`;
         }
     }
 };

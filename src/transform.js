@@ -2,7 +2,7 @@
  * @Author: loki951753@gmail.com 
  * @Date: 2018-07-10 11:59:54 
  * @Last Modified by: loki951753@gmail.com
- * @Last Modified time: 2018-07-31 20:29:19
+ * @Last Modified time: 2018-08-06 20:36:15
  */
 
 
@@ -11,8 +11,13 @@ const traverse = require('@babel/traverse').default;
 
 const {TYPE, BASIC_TYPE} = require('./type');
 const { log } = require('./utils');
+const ignoreAttrList = require('./reactSyntheticEventList');
 
 const supportedExpressionType = ['ArrayExpression', 'BinaryExpression', 'CallExpression', 'ConditionalExpression', 'Identifier', 'StringLiteral', 'NumericLiteral', 'NullLiteral', 'BooleanLiteral', 'LogicalExpression', 'MemberExpression', 'ThisExpression', 'UnaryExpression', 'ArrowFunctionExpression', 'TemplateLiteral', 'JSXElement'];
+
+function isBasicType(type){
+    return t.isIdentifier(type) || t.isMemberExpression(type) || t.isLiteral(type);
+}
 
 function initBlock(){
     return {
@@ -71,6 +76,12 @@ function createToken(type, ...arg){
                 index: null,
                 item: null,
                 statement: []
+            }
+            break;
+        case TYPE.CUSTOM_COMPONENT:
+            token = {
+                type: TYPE.CUSTOM_COMPONENT,
+                name: arg[0]
             }
             break;
         /*
@@ -258,7 +269,13 @@ class Visitor {
         */
         let attributeName = node.name.name;
 
+        if(ignoreAttrList.indexOf(attributeName) !== -1){
+            path.stop();
+            return;
+        }
+
         if(attributeName === 'className') attributeName = 'class';
+
         buf.push(createToken(TYPE.PLAIN, ` ${attributeName}`));
 
         // handle attribute's value
@@ -268,6 +285,18 @@ class Visitor {
 
             buf.push(createToken(TYPE.PLAIN, '"'));
             if(t.isJSXExpressionContainer(node.value)){
+                if(t.isBinaryExpression(node.value.expression)){
+                    // 倒装
+                    // @TODO: 条件组合或映射
+                    expect(node.value.expression.operator).to.be(['==', '!=', '>', '<', '>=', '<=']);
+                    let leftToken = this.getVisitMethod(node.value.expression.left)(path.get('value.expression.left'));
+                    let rightToken = this.getVisitMethod(node.value.expression.left)(path.get('value.expression.right'));
+                    let valueToken = createToken(TYPE.CONDITION);
+                    valueToken.test = createToken(TYPE.PLAIN, `${leftToken}${node.value.expression.operator}${rightToken}`);
+                    valueToken.consequent = createToken(TYPE.PLAIN, attributeName);
+
+                    return valueToken;
+                }
                 buf.push(this.getVisitMethod(node.value.type)(path.get('value')));
             } else {
                 // StringLiteral
@@ -296,6 +325,10 @@ class Visitor {
         const elementName = node.openingElement.name.name;
         if(path.scope.hasBinding(elementName)){
             console.log(`Found custom component being used -> ${elementName}`);
+            // insert custom component markup, replace the content when webpack compiled finished
+            buf.push(createToken(TYPE.CUSTOM_COMPONENT, `${elementName}`));
+            path.stop();
+            return buf.get();
         } else {
             // normal html element
             buf.push(createToken(TYPE.PLAIN, `<${elementName}`));
@@ -305,7 +338,10 @@ class Visitor {
         const attributes = node.openingElement.attributes;
         if(attributes.length !== 0){
             attributes.forEach((attribute, index)=>{
-                buf.push(this.visitJSXAttribute(path.get('openingElement.attributes')[index]));
+                let attributeToken;
+                if(attributeToken = this.visitJSXAttribute(path.get('openingElement.attributes')[index])){
+                    buf.push(attributeToken);
+                }
             })
         }
 

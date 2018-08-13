@@ -8,6 +8,7 @@ const CONDITION_END = 'CONDITION_END';
 const ELSEIF = 'ELSEIF';
 const ELSE = 'ELSE';
 const FOREACH = 'FOREACH'; // 循环语句
+const CUSTOM_COMPONENT = 'CUSTOM_COMPONENT'; // 自定义组件
 
 
 module.exports.BASIC_TYPE = [IDENTIFIER, MEMBER, LITERAL];
@@ -22,5 +23,6 @@ module.exports.TYPE = {
     CONDITION_END,
     ELSEIF,
     ELSE,
-    FOREACH   
+    FOREACH,
+    CUSTOM_COMPONENT
 }

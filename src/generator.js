@@ -5,7 +5,7 @@ class Generator {
         this.tokens = new Stream(tokens);
 
         if(typeof visitor === 'function'){
-            this.visitor = visitor(); // 这里可以注入变量
+            this.visitor = visitor();
         } else if(typeof visitor === 'object'){
             this.visitor = visitor;
         } else {
